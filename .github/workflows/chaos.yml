@@ -1,0 +1,42 @@
+name: chaos
+
+on:
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds of fault injection
+        default: "40"
+      seed:
+        description: Seed (empty = random)
+        default: ""
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  porcupine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Randomized faults + Porcupine
+        env:
+          CHAOS_SECONDS: ${{ github.event.inputs.seconds || '40' }}
+          CHAOS_SEED: ${{ github.event.inputs.seed }}
+          CHAOS_OUT: ${{ github.workspace }}/chaos-out
+        run: go test -count=1 -v -run TestLinearizability -timeout 25m ./test/linearizability/ | tee chaos.log
+      - name: Summary
+        if: always()
+        run: |
+          echo '### Porcupine run' >> "$GITHUB_STEP_SUMMARY"
+          grep -E 'seed=|history:|nemesis:|visualization:|linearizable|PASS|FAIL' chaos.log | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: porcupine-visualizations
+          path: chaos-out/

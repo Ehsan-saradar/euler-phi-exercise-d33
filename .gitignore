@@ -1,0 +1,8 @@
+/bin/
+/data/
+/dist/
+*.test
+*.out
+coverage.*
+/docs/chaos/*.html
+.env

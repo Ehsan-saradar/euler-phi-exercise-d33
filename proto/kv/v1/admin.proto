@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package kv.v1;
+
+option go_package = "github.com/Ehsan-saradar/euler-phi-exercise-d33/gen/kv/v1;kvv1";
+
+// Admin exposes cluster introspection, membership changes and the fault
+// injection switch used by the tests and the live demo.
+service AdminService {
+  rpc Status(StatusRequest) returns (StatusResponse);
+  rpc Join(JoinRequest) returns (JoinResponse);
+  rpc Leave(LeaveRequest) returns (LeaveResponse);
+  rpc Partition(PartitionRequest) returns (PartitionResponse);
+  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
+}
+
+message StatusRequest {}
+
+message Peer {
+  string id = 1;
+  string address = 2;
+  bool voter = 3;
+}
+
+message StatusResponse {
+  string node_id = 1;
+  // Raft state as reported by the library: Leader, Follower, Candidate, Shutdown.
+  string state = 2;
+  string leader_id = 3;
+  string leader_address = 4;
+  uint64 term = 5;
+  uint64 commit_index = 6;
+  uint64 applied_index = 7;
+  uint64 last_log_index = 8;
+  uint64 last_snapshot_index = 9;
+  repeated Peer peers = 10;
+  // Peer ids this node currently refuses to talk to (chaos).
+  repeated string blocked_peers = 11;
+  uint64 num_keys = 12;
+  // Whether raft traffic is frozen on this node (chaos).
+  bool frozen = 13;
+}
+
+message JoinRequest {
+  string id = 1;
+  string address = 2;
+}
+
+message JoinResponse {}
+
+message LeaveRequest {
+  string id = 1;
+}
+
+message LeaveResponse {}
+
+// Partition changes this node's outbound/inbound blocklist. Blocking is
+// symmetric per node: a blocked peer can neither be dialed nor accepted.
+message PartitionRequest {
+  repeated string block = 1;
+  repeated string unblock = 2;
+  // Remove every block before applying block/unblock.
+  bool clear = 3;
+  // When set, freeze (true) or thaw (false) all raft traffic on this node.
+  // A frozen node keeps running but exchanges no messages, which looks like
+  // a long GC pause or a SIGSTOP to its peers.
+  optional bool frozen = 4;
+}
+
+message PartitionResponse {
+  repeated string blocked_peers = 1;
+  bool frozen = 2;
+}
+
+message SnapshotRequest {}
+
+message SnapshotResponse {
+  uint64 index = 1;
+}

@@ -1,0 +1,30 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - misspell
+    - gocritic
+    - revive
+    - errorlint
+    - bodyclose
+    - noctx
+    - unconvert
+    - unparam
+  exclusions:
+    paths:
+      - gen/
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/Ehsan-saradar/euler-phi-exercise-d33

@@ -1,0 +1,66 @@
+# Three-node replicated key-value store. Each node exposes one port that
+# carries both raft replication and the gRPC API.
+#
+#   docker compose up --build
+#   kvctl -addr localhost:7001 put hello world
+#   kvctl -addr localhost:7003 get hello
+x-node: &node
+  build: .
+  restart: unless-stopped
+  environment: &node-env
+    KV_PEERS: node1=node1:7000,node2=node2:7000,node3=node3:7000
+    KV_DATA_DIR: /data
+    KV_LOG_LEVEL: info
+    KV_HEARTBEAT_TIMEOUT: 500ms
+    KV_ELECTION_TIMEOUT: 1000ms
+    KV_LEADER_LEASE_TIMEOUT: 400ms
+    KV_SNAPSHOT_THRESHOLD: "8192"
+    KV_TRAILING_LOGS: "10240"
+    KV_READ_MODE: read_index
+  healthcheck:
+    test: ["CMD", "kvctl", "-addr", "localhost:7000", "health"]
+    interval: 5s
+    timeout: 2s
+    retries: 5
+    start_period: 5s
+  networks: [kv]
+
+services:
+  node1:
+    <<: *node
+    container_name: kv-node1
+    environment:
+      <<: *node-env
+      KV_NODE_ID: node1
+      KV_ADVERTISE: node1:7000
+    ports: ["7001:7000"]
+    volumes: [node1-data:/data]
+
+  node2:
+    <<: *node
+    container_name: kv-node2
+    environment:
+      <<: *node-env
+      KV_NODE_ID: node2
+      KV_ADVERTISE: node2:7000
+    ports: ["7002:7000"]
+    volumes: [node2-data:/data]
+
+  node3:
+    <<: *node
+    container_name: kv-node3
+    environment:
+      <<: *node-env
+      KV_NODE_ID: node3
+      KV_ADVERTISE: node3:7000
+    ports: ["7003:7000"]
+    volumes: [node3-data:/data]
+
+volumes:
+  node1-data:
+  node2-data:
+  node3-data:
+
+networks:
+  kv:
+    driver: bridge
