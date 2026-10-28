@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package kv.v1;
+
+option go_package = "github.com/Ehsan-saradar/euler-phi-exercise-d33/gen/kv/v1;kvv1";
+
+// KV is the client-facing key-value API. Any node accepts any request;
+// followers forward writes and linearizable reads to the current leader.
+service KVService {
+  rpc Put(PutRequest) returns (PutResponse);
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Range(RangeRequest) returns (RangeResponse);
+  rpc CompareAndSwap(CompareAndSwapRequest) returns (CompareAndSwapResponse);
+}
+
+// Consistency selects the read path.
+enum Consistency {
+  CONSISTENCY_UNSPECIFIED = 0;
+  // Served by the leader after a quorum round-trip; sees every committed write.
+  CONSISTENCY_LINEARIZABLE = 1;
+  // Served from the local state machine without coordination; may be stale.
+  CONSISTENCY_STALE = 2;
+}
+
+// ResponseHeader tells the client which node answered and the raft position
+// the answer reflects.
+message ResponseHeader {
+  string node_id = 1;
+  string leader_id = 2;
+  uint64 raft_term = 3;
+  uint64 raft_index = 4;
+}
+
+message KeyValue {
+  bytes key = 1;
+  bytes value = 2;
+  // Version starts at 1 on creation and increments on every write of this key.
+  uint64 version = 3;
+  // Raft log index of the write that created the key.
+  uint64 create_index = 4;
+  // Raft log index of the last write to the key.
+  uint64 mod_index = 5;
+}
+
+message PutRequest {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message PutResponse {
+  ResponseHeader header = 1;
+  KeyValue kv = 2;
+}
+
+message GetRequest {
+  bytes key = 1;
+  Consistency consistency = 2;
+}
+
+message GetResponse {
+  ResponseHeader header = 1;
+  bool found = 2;
+  KeyValue kv = 3;
+}
+
+message DeleteRequest {
+  bytes key = 1;
+}
+
+message DeleteResponse {
+  ResponseHeader header = 1;
+  bool deleted = 2;
+}
+
+message RangeRequest {
+  bytes prefix = 1;
+  // Return keys strictly greater than this one (cursor pagination).
+  bytes start_after = 2;
+  // 0 means server default.
+  int64 limit = 3;
+  Consistency consistency = 4;
+}
+
+message RangeResponse {
+  ResponseHeader header = 1;
+  repeated KeyValue kvs = 2;
+  bool more = 3;
+}
+
+message CompareAndSwapRequest {
+  bytes key = 1;
+  // 0 means "the key must not exist".
+  uint64 expected_version = 2;
+  bytes value = 3;
+}
+
+message CompareAndSwapResponse {
+  ResponseHeader header = 1;
+  bool succeeded = 2;
+  // Current state of the key when the swap failed (unset if absent).
+  KeyValue current = 3;
+}
