@@ -9,13 +9,18 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/soheilhy/cmux"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/Ehsan-saradar/euler-phi-exercise-d33/internal/api"
 	"github.com/Ehsan-saradar/euler-phi-exercise-d33/internal/raftnode"
@@ -34,6 +39,11 @@ type Config struct {
 	Raft raftnode.Config // timing and snapshot knobs; identity fields are filled in here
 	API  api.Config
 
+	// Registry receives this node's metrics; nil creates a private one. The
+	// Go runtime collectors are only added when the registry is private, so
+	// several nodes can share a process in tests.
+	Registry *prometheus.Registry
+
 	Logger *slog.Logger
 }
 
@@ -43,8 +53,10 @@ type Server struct {
 	ln   net.Listener
 	mux  cmux.CMux
 	grpc *grpc.Server
+	http *http.Server
 	api  *api.Server
 	node *raftnode.Node
+	reg  *prometheus.Registry
 	log  *slog.Logger
 	done chan struct{}
 }
@@ -69,7 +81,15 @@ func Start(cfg Config) (*Server, error) {
 
 	mux := cmux.New(ln)
 	grpcL := mux.MatchWithWriters(cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"))
+	httpL := mux.Match(cmux.HTTP1Fast())
 	raftL := mux.Match(cmux.Any())
+
+	reg := cfg.Registry
+	if reg == nil {
+		reg = prometheus.NewRegistry()
+		reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	}
+	cfg.API.Registry = reg
 
 	rcfg := cfg.Raft
 	rcfg.ID = cfg.ID
@@ -84,6 +104,7 @@ func Start(cfg Config) (*Server, error) {
 		_ = ln.Close()
 		return nil, err
 	}
+	reg.MustRegister(node.Collector())
 
 	apiSrv := api.New(node, cfg.API)
 	g := grpc.NewServer()
@@ -93,7 +114,13 @@ func Start(cfg Config) (*Server, error) {
 	grpc_health_v1.RegisterHealthServer(g, h)
 	reflection.Register(g)
 
-	s := &Server{cfg: cfg, ln: ln, mux: mux, grpc: g, api: apiSrv, node: node, log: log, done: make(chan struct{})}
+	s := &Server{cfg: cfg, ln: ln, mux: mux, grpc: g, api: apiSrv, node: node, reg: reg, log: log, done: make(chan struct{})}
+	s.http = &http.Server{Handler: s.httpHandler(), ReadHeaderTimeout: 5 * time.Second}
+	go func() {
+		if err := s.http.Serve(httpL); err != nil && !errors.Is(err, http.ErrServerClosed) && !errors.Is(err, cmux.ErrListenerClosed) && !errors.Is(err, cmux.ErrServerClosed) {
+			log.Error("http server stopped", "err", err)
+		}
+	}()
 	go func() {
 		err := g.Serve(grpcL)
 		if err != nil && !errors.Is(err, grpc.ErrServerStopped) && !errors.Is(err, cmux.ErrListenerClosed) && !errors.Is(err, cmux.ErrServerClosed) {
@@ -108,6 +135,28 @@ func Start(cfg Config) (*Server, error) {
 	}()
 	log.Info("node started", "advertise", cfg.Advertise, "data_dir", cfg.DataDir, "bootstrap", cfg.Bootstrap)
 	return s, nil
+}
+
+// httpHandler serves /metrics, /healthz and /status over plain HTTP/1 on the
+// same port, for Prometheus, humans and the Docker health check.
+func (s *Server) httpHandler() http.Handler {
+	m := http.NewServeMux()
+	m.Handle("/metrics", promhttp.HandlerFor(s.reg, promhttp.HandlerOpts{}))
+	m.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		st := s.node.Status()
+		if st.GetLeaderId() == "" {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = fmt.Fprintf(w, "no leader (state=%s term=%d)\n", st.GetState(), st.GetTerm())
+			return
+		}
+		_, _ = fmt.Fprintf(w, "ok (state=%s leader=%s term=%d)\n", st.GetState(), st.GetLeaderId(), st.GetTerm())
+	})
+	m.HandleFunc("/status", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		b, _ := protojson.MarshalOptions{Multiline: true, EmitUnpopulated: true}.Marshal(s.node.Status())
+		_, _ = w.Write(b)
+	})
+	return m
 }
 
 // Addr returns the advertised address.
@@ -128,6 +177,7 @@ func (s *Server) Stop(ctx context.Context) error {
 		s.grpc.Stop()
 	}
 	s.api.Close()
+	_ = s.http.Close()
 	err := s.node.Shutdown()
 	s.mux.Close()
 	_ = s.ln.Close()
