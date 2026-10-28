@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package kv.v1;
+
+option go_package = "github.com/Ehsan-saradar/euler-phi-exercise-d33/gen/kv/v1;kvv1";
+
+// Command is the payload of every raft log entry. The same schema is used on
+// the wire and on disk so that adding an operation is a field-number change.
+message Command {
+  oneof op {
+    PutOp put = 1;
+    DeleteOp delete = 2;
+    CompareAndSwapOp cas = 3;
+  }
+}
+
+message PutOp {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+message DeleteOp {
+  bytes key = 1;
+}
+
+message CompareAndSwapOp {
+  bytes key = 1;
+  uint64 expected_version = 2;
+  bytes value = 3;
+}
+
+// SnapshotHeader is the first length-prefixed record of a snapshot stream;
+// it is followed by one length-prefixed KeyValue per key.
+message SnapshotHeader {
+  uint32 format_version = 1;
+  uint64 last_applied_index = 2;
+  uint64 num_keys = 3;
+}

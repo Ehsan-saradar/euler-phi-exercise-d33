@@ -1,0 +1,45 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render markdown
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q pandoc
+          mkdir -p site
+          cp -r docs/. site/
+          for f in $(find docs -name '*.md'); do
+            out="site/${f#docs/}"; out="${out%.md}.html"
+            pandoc "$f" --standalone --metadata title="$(basename "$f" .md)" -o "$out"
+          done
+          cp site/index.html site/index.html 2>/dev/null || pandoc README.md --standalone --metadata title="kvstore" -o site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
