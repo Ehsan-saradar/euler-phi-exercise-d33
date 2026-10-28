@@ -8,13 +8,17 @@ import (
 	"errors"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	kvv1 "github.com/Ehsan-saradar/euler-phi-exercise-d33/gen/kv/v1"
+	"github.com/Ehsan-saradar/euler-phi-exercise-d33/internal/fsm"
 	"github.com/Ehsan-saradar/euler-phi-exercise-d33/internal/raftnode"
 )
+
+type fsmResult = fsm.Result
 
 // Config tunes the API layer.
 type Config struct {
@@ -23,6 +27,7 @@ type Config struct {
 	MaxRangeLimit     int
 	MaxKeyBytes       int
 	MaxValueBytes     int
+	Registry          prometheus.Registerer // nil = private registry
 }
 
 func (c *Config) defaults() {
@@ -51,12 +56,13 @@ type Server struct {
 	cfg  Config
 	node *raftnode.Node
 	fwd  *forwarder
+	m    *Metrics
 }
 
 // New builds the API for node.
 func New(node *raftnode.Node, cfg Config) *Server {
 	cfg.defaults()
-	return &Server{cfg: cfg, node: node, fwd: newForwarder(node, cfg.LeaderWait)}
+	return &Server{cfg: cfg, node: node, fwd: newForwarder(node, cfg.LeaderWait), m: NewMetrics(cfg.Registry)}
 }
 
 // Register attaches the services to a gRPC server.
@@ -91,18 +97,22 @@ func (s *Server) validate(key, value []byte) error {
 }
 
 // forwardKV runs call against the leader's KV service.
-func forwardKV[R any](ctx context.Context, s *Server, call func(context.Context, kvv1.KVServiceClient) (R, error)) (R, error) {
+func forwardKV[R any](ctx context.Context, s *Server, rpc string, call func(context.Context, kvv1.KVServiceClient) (R, error)) (R, error) {
+	s.m.Forwarded.WithLabelValues(rpc).Inc()
 	conn, fctx, err := s.fwd.leader(ctx)
 	if err != nil {
 		var zero R
 		return zero, err
 	}
+	start := time.Now()
 	resp, err := call(fctx, kvv1.NewKVServiceClient(conn))
+	s.m.observeSince(s.m.ForwardTime, start)
 	return resp, fromLeader(err)
 }
 
 // forwardAdmin runs call against the leader's Admin service.
-func forwardAdmin[R any](ctx context.Context, s *Server, call func(context.Context, kvv1.AdminServiceClient) (R, error)) (R, error) {
+func forwardAdmin[R any](ctx context.Context, s *Server, rpc string, call func(context.Context, kvv1.AdminServiceClient) (R, error)) (R, error) {
+	s.m.Forwarded.WithLabelValues(rpc).Inc()
 	conn, fctx, err := s.fwd.leader(ctx)
 	if err != nil {
 		var zero R
@@ -110,6 +120,26 @@ func forwardAdmin[R any](ctx context.Context, s *Server, call func(context.Conte
 	}
 	resp, err := call(fctx, kvv1.NewAdminServiceClient(conn))
 	return resp, fromLeader(err)
+}
+
+// propose wraps Node.Propose with metrics.
+func (s *Server) propose(ctx context.Context, cmd *kvv1.Command) (*fsmResult, uint64, error) {
+	start := time.Now()
+	res, idx, err := s.node.Propose(ctx, cmd)
+	switch {
+	case err == nil:
+		s.m.observeSince(s.m.ProposeTime, start)
+		s.m.Proposals.WithLabelValues("ok").Inc()
+	case errors.Is(err, raftnode.ErrNotLeader):
+		s.m.Proposals.WithLabelValues("not_leader").Inc()
+	case errors.Is(err, raftnode.ErrNoLeader):
+		s.m.Proposals.WithLabelValues("not_applied").Inc()
+	case errors.Is(err, raftnode.ErrUnknownOutcome):
+		s.m.Proposals.WithLabelValues("unknown").Inc()
+	default:
+		s.m.Proposals.WithLabelValues("error").Inc()
+	}
+	return res, idx, err
 }
 
 // --- KVService ---
@@ -120,9 +150,9 @@ func (s *Server) Put(ctx context.Context, req *kvv1.PutRequest) (*kvv1.PutRespon
 		return nil, err
 	}
 	cmd := &kvv1.Command{Op: &kvv1.Command_Put{Put: &kvv1.PutOp{Key: req.GetKey(), Value: req.GetValue()}}}
-	res, idx, err := s.node.Propose(ctx, cmd)
+	res, idx, err := s.propose(ctx, cmd)
 	if errors.Is(err, raftnode.ErrNotLeader) {
-		return forwardKV(ctx, s, func(c context.Context, cl kvv1.KVServiceClient) (*kvv1.PutResponse, error) {
+		return forwardKV(ctx, s, "Put", func(c context.Context, cl kvv1.KVServiceClient) (*kvv1.PutResponse, error) {
 			return cl.Put(c, req)
 		})
 	}
@@ -138,9 +168,9 @@ func (s *Server) Delete(ctx context.Context, req *kvv1.DeleteRequest) (*kvv1.Del
 		return nil, err
 	}
 	cmd := &kvv1.Command{Op: &kvv1.Command_Delete{Delete: &kvv1.DeleteOp{Key: req.GetKey()}}}
-	res, idx, err := s.node.Propose(ctx, cmd)
+	res, idx, err := s.propose(ctx, cmd)
 	if errors.Is(err, raftnode.ErrNotLeader) {
-		return forwardKV(ctx, s, func(c context.Context, cl kvv1.KVServiceClient) (*kvv1.DeleteResponse, error) {
+		return forwardKV(ctx, s, "Delete", func(c context.Context, cl kvv1.KVServiceClient) (*kvv1.DeleteResponse, error) {
 			return cl.Delete(c, req)
 		})
 	}
@@ -158,9 +188,9 @@ func (s *Server) CompareAndSwap(ctx context.Context, req *kvv1.CompareAndSwapReq
 	cmd := &kvv1.Command{Op: &kvv1.Command_Cas{Cas: &kvv1.CompareAndSwapOp{
 		Key: req.GetKey(), ExpectedVersion: req.GetExpectedVersion(), Value: req.GetValue(),
 	}}}
-	res, idx, err := s.node.Propose(ctx, cmd)
+	res, idx, err := s.propose(ctx, cmd)
 	if errors.Is(err, raftnode.ErrNotLeader) {
-		return forwardKV(ctx, s, func(c context.Context, cl kvv1.KVServiceClient) (*kvv1.CompareAndSwapResponse, error) {
+		return forwardKV(ctx, s, "CompareAndSwap", func(c context.Context, cl kvv1.KVServiceClient) (*kvv1.CompareAndSwapResponse, error) {
 			return cl.CompareAndSwap(c, req)
 		})
 	}
@@ -174,15 +204,21 @@ func (s *Server) CompareAndSwap(ctx context.Context, req *kvv1.CompareAndSwapReq
 // linearizable reads pass the leader's read gate or are forwarded.
 func (s *Server) readIndex(ctx context.Context, c kvv1.Consistency) (idx uint64, forward bool, err error) {
 	if c == kvv1.Consistency_CONSISTENCY_STALE {
+		s.m.Reads.WithLabelValues("stale", "ok").Inc()
 		return s.node.Store().Applied(), false, nil
 	}
+	start := time.Now()
 	idx, err = s.node.Linearize(ctx)
-	if errors.Is(err, raftnode.ErrNotLeader) {
+	switch {
+	case errors.Is(err, raftnode.ErrNotLeader):
+		s.m.Reads.WithLabelValues("linearizable", "forwarded").Inc()
 		return 0, true, nil
-	}
-	if err != nil {
+	case err != nil:
+		s.m.Reads.WithLabelValues("linearizable", "error").Inc()
 		return 0, false, toStatus(err)
 	}
+	s.m.observeSince(s.m.LinearTime, start)
+	s.m.Reads.WithLabelValues("linearizable", "ok").Inc()
 	return idx, false, nil
 }
 
@@ -196,7 +232,7 @@ func (s *Server) Get(ctx context.Context, req *kvv1.GetRequest) (*kvv1.GetRespon
 		return nil, err
 	}
 	if forward {
-		return forwardKV(ctx, s, func(c context.Context, cl kvv1.KVServiceClient) (*kvv1.GetResponse, error) {
+		return forwardKV(ctx, s, "Get", func(c context.Context, cl kvv1.KVServiceClient) (*kvv1.GetResponse, error) {
 			return cl.Get(c, req)
 		})
 	}
@@ -218,7 +254,7 @@ func (s *Server) Range(ctx context.Context, req *kvv1.RangeRequest) (*kvv1.Range
 		return nil, err
 	}
 	if forward {
-		return forwardKV(ctx, s, func(c context.Context, cl kvv1.KVServiceClient) (*kvv1.RangeResponse, error) {
+		return forwardKV(ctx, s, "Range", func(c context.Context, cl kvv1.KVServiceClient) (*kvv1.RangeResponse, error) {
 			return cl.Range(c, req)
 		})
 	}
@@ -240,7 +276,7 @@ func (s *Server) Join(ctx context.Context, req *kvv1.JoinRequest) (*kvv1.JoinRes
 	}
 	err := s.node.AddVoter(ctx, req.GetId(), req.GetAddress())
 	if errors.Is(err, raftnode.ErrNotLeader) {
-		return forwardAdmin(ctx, s, func(c context.Context, cl kvv1.AdminServiceClient) (*kvv1.JoinResponse, error) {
+		return forwardAdmin(ctx, s, "Join", func(c context.Context, cl kvv1.AdminServiceClient) (*kvv1.JoinResponse, error) {
 			return cl.Join(c, req)
 		})
 	}
@@ -257,7 +293,7 @@ func (s *Server) Leave(ctx context.Context, req *kvv1.LeaveRequest) (*kvv1.Leave
 	}
 	err := s.node.RemoveServer(ctx, req.GetId())
 	if errors.Is(err, raftnode.ErrNotLeader) {
-		return forwardAdmin(ctx, s, func(c context.Context, cl kvv1.AdminServiceClient) (*kvv1.LeaveResponse, error) {
+		return forwardAdmin(ctx, s, "Leave", func(c context.Context, cl kvv1.AdminServiceClient) (*kvv1.LeaveResponse, error) {
 			return cl.Leave(c, req)
 		})
 	}
