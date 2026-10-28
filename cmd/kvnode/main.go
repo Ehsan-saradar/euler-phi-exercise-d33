@@ -14,6 +14,11 @@ import (
 	"syscall"
 	"time"
 
+	metrics "github.com/hashicorp/go-metrics"
+	metricsprom "github.com/hashicorp/go-metrics/prometheus"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+
 	"github.com/Ehsan-saradar/euler-phi-exercise-d33/internal/raftnode"
 	"github.com/Ehsan-saradar/euler-phi-exercise-d33/internal/server"
 )
@@ -61,6 +66,19 @@ func run() error {
 	if cfg.Advertise == "" && cfg.Peers != nil {
 		cfg.Advertise = cfg.Peers[cfg.ID]
 	}
+
+	// hashicorp/raft reports its internal timings (commit, fsm apply, ...)
+	// through go-metrics; route them to the same Prometheus registry.
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	if sink, err := metricsprom.NewPrometheusSinkFrom(metricsprom.PrometheusOpts{Registerer: reg}); err == nil {
+		mcfg := metrics.DefaultConfig("kvnode")
+		mcfg.EnableHostname = false
+		if _, err := metrics.NewGlobal(mcfg, sink); err != nil {
+			logger.Warn("raft metrics disabled", "err", err)
+		}
+	}
+	cfg.Registry = reg
 
 	srv, err := server.Start(cfg)
 	if err != nil {

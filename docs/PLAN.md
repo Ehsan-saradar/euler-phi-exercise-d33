@@ -36,11 +36,12 @@ Goal: a small, strongly consistent store for critical config and leases, similar
 
 Writing Raft from scratch is NOT recommended: the exercise explicitly allows a library, and the score comes from correctness proofs and the design doc, not from re-deriving Raft.
 
-### Client API: HTTP + JSON (recommended), gRPC optional
-- `curl`-able during the live review, trivial to drive from a Go test, no codegen.
-- Shape it like etcd v3 so the mapping is obvious: `PUT /v1/kv/{key}`, `GET /v1/kv/{key}`, `DELETE /v1/kv/{key}`, `GET /v1/kv?prefix=`, `POST /v1/kv/{key}/cas` (compare-and-swap), optional `POST /v1/lease`, `GET /v1/watch?prefix=` (SSE).
-- Query param `consistency=linearizable|stale` (default linearizable).
-- Alternative: gRPC + grpc-gateway. More "real", but double the plumbing. Only do it if you want gRPC on your CV for this review.
+### Client API: gRPC + protobuf (chosen)
+- `KVService` (Put, Get, Delete, Range, CompareAndSwap) and `AdminService` (Status, Join, Leave, Partition, Snapshot), shaped after etcd v3.
+- `Consistency` enum on reads: `LINEARIZABLE` (default) or `STALE`.
+- The protobuf schema also encodes the raft log command and the snapshot stream; generated code is committed in `gen/` and checked in CI.
+- `kvctl` CLI for demos and the Docker health check; `grpcurl` works through server reflection.
+- One port per node: cmux routes gRPC, HTTP/1 (`/metrics`, `/healthz`, `/status`) and raft.
 
 ### Storage: `raft-boltdb` (recommended) for log + stable store, in-memory map for the state machine, file snapshot store
 - The FSM is a `map[string]Entry` (value, version, create/mod revision, optional lease id) behind an `RWMutex`.
@@ -52,10 +53,9 @@ Writing Raft from scratch is NOT recommended: the exercise explicitly allows a l
 - Gives deterministic, privilege-free partitions that work identically in-process tests and in Docker.
 - Plus a shell nemesis that does real `docker compose kill/pause/unpause` and `docker network disconnect/connect` for the demo (needs the Docker socket from the host, not from inside containers).
 
-### Request routing: follower forwards writes and linearizable reads to the leader (recommended)
-- Client can hit any node; follower proxies to the leader address learned from Raft, returns `X-Raft-Leader` header.
-- Alternative: HTTP 307 redirect to the leader (simpler, pushes complexity to clients). Alternative: no forwarding, client-side leader discovery (what etcd clients do).
-- Explicit failure modes: no leader known or quorum lost → `503 {"error":"no leader", "retry_after_ms":...}` after a bounded wait (e.g. 2s), never a hang, never a false success.
+### Request routing: follower forwards writes and linearizable reads to the leader (chosen)
+- Client can hit any node; a follower forwards over gRPC to the leader address learned from raft (same address as the raft one, thanks to the single port). A forwarded request is marked and never forwarded twice.
+- Explicit failure modes: no leader known or quorum lost → `Unavailable` with `ErrorInfo.reason = NOT_APPLIED` after a bounded wait; a lost leader after enqueue → `DeadlineExceeded` (unknown outcome). Never a hang, never a false success.
 
 ### Cluster bootstrap: static peer list via env, every node calls `BootstrapCluster` with the identical configuration
 - hashicorp/raft documents this as safe; avoids a coordinator and a "join" dance.
@@ -63,9 +63,10 @@ Writing Raft from scratch is NOT recommended: the exercise explicitly allows a l
 
 ### Linearizable read path (be ready to explain this on a whiteboard)
 1. Request arrives at node X. If X is not leader, forward to leader L.
-2. L calls `VerifyLeader()` (one heartbeat round to a majority; proves no newer term exists).
-3. L calls `Barrier()` so the FSM has applied everything committed up to that point.
-4. L reads from the FSM and responds.
+2. Once per term L commits a barrier (Raft §8: a leader must commit an entry of its own term before serving reads).
+3. L calls `VerifyLeader()` (one heartbeat round to a majority; proves no newer term exists) and re-checks the term.
+4. L takes `CommitIndex()` and waits for the FSM's own applied index to reach it (noop/barrier/config entries never reach the FSM, so the gap is scanned in the log for the last command entry).
+5. L reads from the FSM and responds. `KV_READ_MODE=barrier` keeps the "barrier per read" variant for comparison.
 - Why not just `read from FSM on the leader`: a deposed leader in a minority partition would serve stale data.
 - Why not lease-based reads: depends on bounded clock drift; fine for etcd, unnecessary here. Mention as optimization with its risk.
 - Why the no-op at term start matters: a new leader must commit an entry from its own term before it can know its commit index (Raft §8). The library does this automatically; say so.
@@ -111,6 +112,9 @@ Writing Raft from scratch is NOT recommended: the exercise explicitly allows a l
 ## 4. Step-by-step phases
 
 Estimates assume Go + hashicorp/raft. Double them for etcd/raft.
+Status (2026-10-28): phases 0 to 8 are implemented and verified, except the
+diagrams in the requested tool (sources in `docs/diagrams/README.md`). Phase 9
+notes are in `docs/LIVE-REVIEW.md`; the rehearsal itself is pending.
 
 | # | Phase | Deliverables | Est. hours |
 |---|-------|--------------|-----------|
