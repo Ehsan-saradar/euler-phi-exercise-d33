@@ -14,11 +14,18 @@ permissions:
 
 jobs:
   analyze:
+    # Code scanning on a private repo needs GitHub Advanced Security, which
+    # personal accounts cannot enable; skip until the repo is public.
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
       - uses: github/codeql-action/init@v3
         with:
           languages: go
-          build-mode: none # Go needs no build to extract; autobuild would run `make all`
+          build-mode: manual # autobuild would run `make all` (lint, race tests, build)
+      - run: go build ./...
       - uses: github/codeql-action/analyze@v3
