@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Write path: forward, replicate, commit, apply",
+    "output": ".archify/flow-write.html",
+    "locale": "en",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "external", "label": "client", "sublabel": "kvctl / service" },
+    { "id": "node2", "type": "backend", "label": "node2", "sublabel": "follower" },
+    { "id": "node1", "type": "backend", "label": "node1", "sublabel": "leader" },
+    { "id": "node3", "type": "backend", "label": "node3", "sublabel": "follower" }
+  ],
+  "segments": [
+    { "from": 150, "to": 250, "label": "Forward (one hop)" },
+    { "from": 258, "to": 420, "label": "Replicate and commit" },
+    { "from": 428, "to": 520, "label": "Reply" }
+  ],
+  "messages": [
+    { "id": "put", "from": "client", "to": "node2", "y": 170, "label": "Put(k, v)", "variant": "emphasis" },
+    { "id": "forward", "from": "node2", "to": "node1", "y": 205, "label": "Put(k, v) with kv-forwarded=1", "variant": "emphasis", "note": "leader encodes the Command, appends it to its boltdb log (fsync)" },
+    { "id": "ae2", "from": "node1", "to": "node2", "y": 275, "label": "AppendEntries", "variant": "default" },
+    { "id": "ae3", "from": "node1", "to": "node3", "y": 305, "label": "AppendEntries", "variant": "default" },
+    { "id": "ack2", "from": "node2", "to": "node1", "y": 335, "label": "ack (persisted)", "variant": "return", "note": "majority persisted → committed; FSM.Apply: version+1, mod_index = entry index" },
+    { "id": "resp", "from": "node1", "to": "node2", "y": 445, "label": "PutResponse{index, term, kv}", "variant": "return" },
+    { "id": "resp-client", "from": "node2", "to": "client", "y": 480, "label": "PutResponse", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "node2", "from": 165, "to": 490, "type": "backend" },
+    { "participant": "node1", "from": 200, "to": 455, "type": "backend" },
+    { "participant": "node3", "from": 300, "to": 318, "type": "backend" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Durability before ack", "items": ["An entry is acknowledged only after a majority has it on disk", "The response carries the FSM result plus the entry's index and term"] },
+    { "dot": "emerald", "title": "Forwarding", "items": ["A follower forwards once; the kv-forwarded tag stops a second hop", "A leadership change mid-hop yields Unavailable NOT_APPLIED, never a silent retry"] },
+    { "dot": "orange", "title": "Ordering", "items": ["One goroutine applies committed entries in log order", "Per-key version increments make CompareAndSwap deterministic"] }
+  ]
+}

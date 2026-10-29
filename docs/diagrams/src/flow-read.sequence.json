@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Read path: linearizable (ReadIndex) and stale",
+    "output": ".archify/flow-read.html",
+    "locale": "en",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "client", "type": "external", "label": "client", "sublabel": "kvctl / service" },
+    { "id": "leader", "type": "backend", "label": "leader", "sublabel": "serving node" },
+    { "id": "followers", "type": "backend", "label": "followers", "sublabel": "majority" },
+    { "id": "anynode", "type": "backend", "label": "any node", "sublabel": "stale read" }
+  ],
+  "segments": [
+    { "from": 150, "to": 190, "label": "Request" },
+    { "from": 196, "to": 262, "label": "Once per term" },
+    { "from": 268, "to": 400, "label": "ReadIndex" },
+    { "from": 408, "to": 490, "label": "Stale read" }
+  ],
+  "messages": [
+    { "id": "get", "from": "client", "to": "leader", "y": 170, "label": "Get(k, LINEARIZABLE)", "variant": "emphasis" },
+    { "id": "barrier", "from": "leader", "to": "followers", "y": 210, "label": "barrier: commit an entry of this term", "variant": "dashed" },
+    { "id": "barrier-ack", "from": "followers", "to": "leader", "y": 240, "label": "committed", "variant": "return" },
+    { "id": "verify", "from": "leader", "to": "followers", "y": 285, "label": "VerifyLeader heartbeat", "variant": "security" },
+    { "id": "verify-ack", "from": "followers", "to": "leader", "y": 315, "label": "ack from majority", "variant": "return", "note": "commit := CommitIndex(); wait until FSM.applied ≥ commit (the FSM tracks its own index)" },
+    { "id": "get-resp", "from": "leader", "to": "client", "y": 385, "label": "GetResponse{value, version, index = commit}", "variant": "return" },
+    { "id": "stale", "from": "client", "to": "anynode", "y": 425, "label": "Get(k, STALE)", "variant": "default" },
+    { "id": "stale-resp", "from": "anynode", "to": "client", "y": 460, "label": "value from the local FSM, index = applied", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "leader", "from": 165, "to": 392, "type": "backend" },
+    { "participant": "followers", "from": 205, "to": 246, "type": "backend" },
+    { "participant": "followers", "from": 280, "to": 321, "type": "backend" },
+    { "participant": "anynode", "from": 420, "to": 466, "type": "backend" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Why the barrier", "items": ["A new leader learns the true commit index only after committing an entry of its own term (Raft §8)", "Memoised per term, so it costs one entry per leadership change"] },
+    { "dot": "emerald", "title": "Why wait on the FSM", "items": ["raft.AppliedIndex advances when an entry is handed to the FSM, not when it is applied", "The FSM keeps its own applied index; the read waits until it reaches commit"] },
+    { "dot": "orange", "title": "Stale reads", "items": ["No coordination, no network round trip", "Keep working on the minority side of a partition; callers re-validate by index"] }
+  ]
+}

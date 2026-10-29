@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Leader crash: election, acknowledged and in-flight writes",
+    "output": ".archify/flow-failover.html",
+    "locale": "en",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "client",
+      "sublabel": "kvctl / service"
+    },
+    {
+      "id": "old",
+      "type": "backend",
+      "label": "old leader",
+      "sublabel": "crashes"
+    },
+    {
+      "id": "a",
+      "type": "backend",
+      "label": "follower A",
+      "sublabel": "new leader"
+    },
+    {
+      "id": "b",
+      "type": "backend",
+      "label": "follower B",
+      "sublabel": ""
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 300,
+      "label": "k1 acknowledged on a majority"
+    },
+    {
+      "from": 308,
+      "to": 380,
+      "label": "k2 in flight, leader crashes"
+    },
+    {
+      "from": 388,
+      "to": 500,
+      "label": "Election"
+    },
+    {
+      "from": 515,
+      "to": 705,
+      "label": "What the client sees"
+    }
+  ],
+  "messages": [
+    {
+      "id": "put-k1",
+      "from": "client",
+      "to": "old",
+      "y": 170,
+      "label": "Put(k1)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ae-a",
+      "from": "old",
+      "to": "a",
+      "y": 200,
+      "label": "AppendEntries(k1)",
+      "variant": "default"
+    },
+    {
+      "id": "ack-a",
+      "from": "a",
+      "to": "old",
+      "y": 230,
+      "label": "ack: k1 on a majority",
+      "variant": "return"
+    },
+    {
+      "id": "resp-k1",
+      "from": "old",
+      "to": "client",
+      "y": 265,
+      "label": "PutResponse(k1)",
+      "variant": "return"
+    },
+    {
+      "id": "put-k2",
+      "from": "client",
+      "to": "old",
+      "y": 325,
+      "label": "Put(k2)",
+      "variant": "emphasis",
+      "note": "leader crashes before k2 reaches a majority (B never saw k1 or k2)"
+    },
+    {
+      "id": "vote",
+      "from": "a",
+      "to": "b",
+      "y": 405,
+      "label": "RequestVote(term+1)",
+      "variant": "dashed",
+      "note": "election timeout (1 s in compose, 100 ms in tests); A wins because its log has k1"
+    },
+    {
+      "id": "vote-ok",
+      "from": "b",
+      "to": "a",
+      "y": 460,
+      "label": "vote granted; A commits a noop, serves",
+      "variant": "return"
+    },
+    {
+      "id": "k2-fail",
+      "from": "old",
+      "to": "client",
+      "y": 540,
+      "label": "Put(k2): DeadlineExceeded, outcome unknown",
+      "variant": "dashed"
+    },
+    {
+      "id": "get-k1",
+      "from": "client",
+      "to": "a",
+      "y": 580,
+      "label": "Get(k1, LINEARIZABLE)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "get-k1-ok",
+      "from": "a",
+      "to": "client",
+      "y": 610,
+      "label": "found: acknowledged write survived",
+      "variant": "return"
+    },
+    {
+      "id": "get-k2",
+      "from": "client",
+      "to": "a",
+      "y": 645,
+      "label": "Get(k2)",
+      "variant": "default"
+    },
+    {
+      "id": "get-k2-maybe",
+      "from": "a",
+      "to": "client",
+      "y": 675,
+      "label": "maybe: read back before retrying",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "old",
+      "from": 165,
+      "to": 340,
+      "type": "backend"
+    },
+    {
+      "participant": "a",
+      "from": 195,
+      "to": 236,
+      "type": "backend"
+    },
+    {
+      "participant": "a",
+      "from": 400,
+      "to": 681,
+      "type": "backend"
+    },
+    {
+      "participant": "b",
+      "from": 400,
+      "to": 466,
+      "type": "backend"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Acknowledged writes",
+      "items": [
+        "An acked entry is on a majority, so any electable candidate has it",
+        "TestLeaderFailoverKeepsAcknowledgedWrites and the e2e kill-leader run check this"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "In-flight writes",
+      "items": [
+        "DeadlineExceeded or a lost connection means unknown, not failed",
+        "The client reads back (or uses CompareAndSwap) before retrying"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Election",
+      "items": [
+        "Followers time out, vote for the most complete log, the winner commits a noop",
+        "Clients that hit the old address get connection refused and move to another node"
+      ]
+    }
+  ]
+}

@@ -6,3 +6,7 @@
 coverage.*
 /docs/chaos/*.html
 .env
+
+# Archify build output (HTML viewers + receipts); PNG/SVG exports live in docs/diagrams/
+/.archify/
+/node_modules/
