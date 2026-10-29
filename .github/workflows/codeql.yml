@@ -8,6 +8,7 @@ on:
     - cron: "33 4 * * 1"
 
 permissions:
+  actions: read # private repo: analyze@v3 reads the workflow run to upload results
   contents: read
   security-events: write
 
@@ -19,5 +20,5 @@ jobs:
       - uses: github/codeql-action/init@v3
         with:
           languages: go
-      - uses: github/codeql-action/autobuild@v3
+          build-mode: none # Go needs no build to extract; autobuild would run `make all`
       - uses: github/codeql-action/analyze@v3
