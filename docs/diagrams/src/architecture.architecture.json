@@ -1,0 +1,452 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Replicated KV store: system architecture",
+    "output": ".archify/architecture.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "backend": {
+          "label": "process component"
+        },
+        "database": {
+          "label": "state (memory or disk)"
+        },
+        "external": {
+          "label": "clients and scrapers"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "prometheus",
+      "type": "external",
+      "label": "Prometheus",
+      "sublabel": "scrapes /metrics",
+      "pos": [
+        40,
+        40
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "kvctl",
+      "type": "external",
+      "label": "kvctl",
+      "sublabel": "CLI, any node",
+      "pos": [
+        240,
+        40
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "services",
+      "type": "external",
+      "label": "service clients",
+      "sublabel": "config + leases, any node",
+      "pos": [
+        770,
+        40
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "http1",
+      "type": "backend",
+      "label": "HTTP/1",
+      "sublabel": "/metrics /healthz /status",
+      "pos": [
+        40,
+        170
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "cmux1",
+      "type": "backend",
+      "label": "cmux",
+      "sublabel": "one port :7000",
+      "pos": [
+        240,
+        170
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "tag": "gRPC | HTTP | raft"
+    },
+    {
+      "id": "grpc1",
+      "type": "backend",
+      "label": "gRPC",
+      "sublabel": "KVService, AdminService",
+      "pos": [
+        240,
+        290
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "api1",
+      "type": "backend",
+      "label": "api",
+      "sublabel": "validate, forward, errors",
+      "pos": [
+        240,
+        410
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "raft1",
+      "type": "backend",
+      "label": "raftnode",
+      "sublabel": "hashicorp/raft wiring",
+      "pos": [
+        240,
+        530
+      ],
+      "size": [
+        130,
+        60
+      ],
+      "tag": "chaos transport"
+    },
+    {
+      "id": "fsm1",
+      "type": "database",
+      "label": "FSM",
+      "sublabel": "map, versions, applied index",
+      "pos": [
+        40,
+        530
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "bolt1",
+      "type": "database",
+      "label": "boltdb + snapshots",
+      "sublabel": "raft.db, snapshots/",
+      "pos": [
+        40,
+        410
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "cmux2",
+      "type": "backend",
+      "label": "cmux",
+      "sublabel": ":7000 gRPC | HTTP | raft",
+      "pos": [
+        640,
+        410
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "raft2",
+      "type": "backend",
+      "label": "raftnode",
+      "sublabel": "api + raft, same binary",
+      "pos": [
+        640,
+        530
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "fsm2",
+      "type": "database",
+      "label": "FSM + boltdb",
+      "sublabel": "replica state",
+      "pos": [
+        640,
+        650
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "cmux3",
+      "type": "backend",
+      "label": "cmux",
+      "sublabel": ":7000 gRPC | HTTP | raft",
+      "pos": [
+        900,
+        410
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "raft3",
+      "type": "backend",
+      "label": "raftnode",
+      "sublabel": "api + raft, same binary",
+      "pos": [
+        900,
+        530
+      ],
+      "size": [
+        130,
+        60
+      ]
+    },
+    {
+      "id": "fsm3",
+      "type": "database",
+      "label": "FSM + boltdb",
+      "sublabel": "replica state",
+      "pos": [
+        900,
+        650
+      ],
+      "size": [
+        130,
+        60
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "node1 (container) \u2014 leader in this picture",
+      "wraps": [
+        "http1",
+        "cmux1",
+        "grpc1",
+        "api1",
+        "raft1",
+        "fsm1",
+        "bolt1"
+      ],
+      "pad": 16
+    },
+    {
+      "kind": "region",
+      "label": "node2 (container)",
+      "wraps": [
+        "cmux2",
+        "raft2",
+        "fsm2"
+      ],
+      "pad": 16
+    },
+    {
+      "kind": "region",
+      "label": "node3 (container)",
+      "wraps": [
+        "cmux3",
+        "raft3",
+        "fsm3"
+      ],
+      "pad": 16
+    }
+  ],
+  "connections": [
+    {
+      "id": "scrape",
+      "from": "prometheus",
+      "to": "http1",
+      "label": "GET /metrics"
+    },
+    {
+      "id": "kvctl-grpc",
+      "from": "kvctl",
+      "to": "cmux1",
+      "label": "gRPC :7000",
+      "variant": "emphasis"
+    },
+    {
+      "id": "services-node2",
+      "from": "services",
+      "to": "cmux2",
+      "label": "gRPC :7000",
+      "variant": "emphasis"
+    },
+    {
+      "id": "services-node3",
+      "from": "services",
+      "to": "cmux3",
+      "label": "gRPC :7000",
+      "variant": "emphasis"
+    },
+    {
+      "id": "mux-http",
+      "from": "cmux1",
+      "to": "http1",
+      "label": "HTTP/1"
+    },
+    {
+      "id": "mux-grpc",
+      "from": "cmux1",
+      "to": "grpc1",
+      "label": "HTTP/2",
+      "variant": "emphasis"
+    },
+    {
+      "id": "grpc-api",
+      "from": "grpc1",
+      "to": "api1",
+      "label": "handlers",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-raft",
+      "from": "api1",
+      "to": "raft1",
+      "label": "Propose / Linearize",
+      "variant": "emphasis"
+    },
+    {
+      "id": "forward",
+      "from": "api1",
+      "to": "cmux2",
+      "label": "forward once: kv-forwarded=1",
+      "variant": "dashed"
+    },
+    {
+      "id": "apply",
+      "from": "raft1",
+      "to": "fsm1",
+      "label": "Apply",
+      "variant": "emphasis"
+    },
+    {
+      "id": "persist",
+      "from": "raft1",
+      "to": "bolt1",
+      "label": "append + fsync, snapshot files",
+      "route": "orthogonal-h"
+    },
+    {
+      "id": "raft-1-2",
+      "from": "raft1",
+      "to": "raft2",
+      "label": "raft RPCs (AppendEntries, votes)",
+      "variant": "security"
+    },
+    {
+      "id": "raft-2-3",
+      "from": "raft2",
+      "to": "raft3",
+      "label": "raft RPCs",
+      "variant": "security"
+    },
+    {
+      "id": "raft-1-3",
+      "from": "raft1",
+      "to": "raft3",
+      "label": "raft RPCs",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "right",
+      "via": [
+        [
+          305,
+          760
+        ],
+        [
+          1070,
+          760
+        ],
+        [
+          1070,
+          560
+        ]
+      ]
+    },
+    {
+      "id": "mux2-raft2",
+      "from": "cmux2",
+      "to": "raft2",
+      "label": "gRPC \u2192 api"
+    },
+    {
+      "id": "raft2-fsm2",
+      "from": "raft2",
+      "to": "fsm2",
+      "label": "Apply"
+    },
+    {
+      "id": "mux3-raft3",
+      "from": "cmux3",
+      "to": "raft3",
+      "label": "gRPC \u2192 api"
+    },
+    {
+      "id": "raft3-fsm3",
+      "from": "raft3",
+      "to": "fsm3",
+      "label": "Apply"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "One port per node",
+      "items": [
+        "cmux splits :7000 into gRPC (clients and forwards), HTTP/1 (Prometheus, health) and raft's own protocol",
+        "The raft advertise address is the API address, so followers forward to the leader without discovery"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Write and read paths",
+      "items": [
+        "Writes: api \u2192 Propose \u2192 boltdb append (fsync) \u2192 replicate \u2192 majority \u2192 FSM.Apply",
+        "Linearizable reads: ReadIndex (VerifyLeader + wait for FSM applied index); stale reads answer from any FSM"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Fault injection",
+      "items": [
+        "ChaosLayer wraps the raft transport: block peers, drop inbound, freeze traffic",
+        "Driven by Admin.Partition in tests; docker compose kill/pause in e2e"
+      ]
+    }
+  ]
+}

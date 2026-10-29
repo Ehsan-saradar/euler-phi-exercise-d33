@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Minority partition: lease loss, refusal, heal",
+    "output": ".archify/flow-partition.html",
+    "locale": "en",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "client",
+      "sublabel": "kvctl / service"
+    },
+    {
+      "id": "old",
+      "type": "backend",
+      "label": "leader L",
+      "sublabel": "isolated minority"
+    },
+    {
+      "id": "a",
+      "type": "backend",
+      "label": "follower A",
+      "sublabel": "majority, new leader"
+    },
+    {
+      "id": "b",
+      "type": "backend",
+      "label": "follower B",
+      "sublabel": "majority"
+    }
+  ],
+  "segments": [
+    {
+      "from": 150,
+      "to": 320,
+      "label": "Partition: L | {A, B}"
+    },
+    {
+      "from": 328,
+      "to": 420,
+      "label": "Majority elects A"
+    },
+    {
+      "from": 428,
+      "to": 560,
+      "label": "Writes continue on the majority"
+    },
+    {
+      "from": 568,
+      "to": 760,
+      "label": "Heal"
+    }
+  ],
+  "messages": [
+    {
+      "id": "put-x",
+      "from": "client",
+      "to": "old",
+      "y": 170,
+      "label": "Put(x)",
+      "variant": "emphasis",
+      "note": "L appends x to its own log; AppendEntries to A and B are dropped by the partition"
+    },
+    {
+      "id": "ae-dropped",
+      "from": "old",
+      "to": "a",
+      "y": 235,
+      "label": "AppendEntries(x) \u2014 dropped",
+      "variant": "dashed"
+    },
+    {
+      "id": "put-x-fail",
+      "from": "old",
+      "to": "client",
+      "y": 270,
+      "label": "NOT_APPLIED or DeadlineExceeded, never success",
+      "variant": "dashed",
+      "note": "no majority ack; LeaderLeaseTimeout (400 ms) expires \u2192 L steps down"
+    },
+    {
+      "id": "vote",
+      "from": "a",
+      "to": "b",
+      "y": 345,
+      "label": "RequestVote(term+1)",
+      "variant": "dashed"
+    },
+    {
+      "id": "vote-ok",
+      "from": "b",
+      "to": "a",
+      "y": 380,
+      "label": "vote granted: A leads at a higher term",
+      "variant": "return"
+    },
+    {
+      "id": "put-y",
+      "from": "client",
+      "to": "b",
+      "y": 445,
+      "label": "Put(y)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "fwd-y",
+      "from": "b",
+      "to": "a",
+      "y": 475,
+      "label": "Put(y) with kv-forwarded=1",
+      "variant": "emphasis"
+    },
+    {
+      "id": "y-ok",
+      "from": "a",
+      "to": "b",
+      "y": 505,
+      "label": "committed on {A, B}",
+      "variant": "return"
+    },
+    {
+      "id": "y-client",
+      "from": "b",
+      "to": "client",
+      "y": 535,
+      "label": "PutResponse(y)",
+      "variant": "return"
+    },
+    {
+      "id": "heal",
+      "from": "a",
+      "to": "old",
+      "y": 585,
+      "label": "AppendEntries(term+1)",
+      "variant": "security",
+      "note": "L truncates its uncommitted x, appends y, and becomes a follower"
+    },
+    {
+      "id": "get-y",
+      "from": "client",
+      "to": "old",
+      "y": 650,
+      "label": "Get(y, LINEARIZABLE)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "get-y-fwd",
+      "from": "old",
+      "to": "a",
+      "y": 680,
+      "label": "forward Get(y)",
+      "variant": "default"
+    },
+    {
+      "id": "get-y-found",
+      "from": "a",
+      "to": "old",
+      "y": 710,
+      "label": "found",
+      "variant": "return"
+    },
+    {
+      "id": "get-y-client",
+      "from": "old",
+      "to": "client",
+      "y": 740,
+      "label": "GetResponse(y)",
+      "variant": "return"
+    }
+  ],
+  "activations": [
+    {
+      "participant": "old",
+      "from": 165,
+      "to": 280,
+      "type": "backend"
+    },
+    {
+      "participant": "a",
+      "from": 340,
+      "to": 386,
+      "type": "backend"
+    },
+    {
+      "participant": "b",
+      "from": 440,
+      "to": 541,
+      "type": "backend"
+    },
+    {
+      "participant": "a",
+      "from": 470,
+      "to": 511,
+      "type": "backend"
+    },
+    {
+      "participant": "old",
+      "from": 580,
+      "to": 746,
+      "type": "backend"
+    },
+    {
+      "participant": "a",
+      "from": 675,
+      "to": 716,
+      "type": "backend"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Minority side",
+      "items": [
+        "Writes return Unavailable NOT_APPLIED (after step-down) or DeadlineExceeded (enqueued before); never success",
+        "Linearizable reads fail (VerifyLeader has no majority); stale reads still answer"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Majority side",
+      "items": [
+        "A and B elect a leader at a higher term and keep accepting writes",
+        "TestMinorityPartitionRefusesWrites and the e2e partition run check this"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "After heal",
+      "items": [
+        "The old leader's uncommitted tail is truncated; x never becomes visible",
+        "ChaosLayer drives this in-process; docker compose does it for real in e2e"
+      ]
+    }
+  ]
+}

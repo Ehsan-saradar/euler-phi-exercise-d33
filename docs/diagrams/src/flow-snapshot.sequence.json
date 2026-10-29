@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Snapshot, compaction and InstallSnapshot catch-up",
+    "output": ".archify/flow-snapshot.html",
+    "locale": "en",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "leader", "type": "backend", "label": "leader", "sublabel": "raftnode" },
+    { "id": "fsm", "type": "database", "label": "FSM", "sublabel": "in-memory map" },
+    { "id": "store", "type": "database", "label": "snapshot store", "sublabel": "snapshots/<id>/ + raft.db" },
+    { "id": "lagging", "type": "backend", "label": "lagging follower", "sublabel": "was offline" }
+  ],
+  "segments": [
+    { "from": 150, "to": 330, "label": "Snapshot and compaction" },
+    { "from": 338, "to": 600, "label": "Catch-up" }
+  ],
+  "messages": [
+    { "id": "snap", "from": "leader", "to": "fsm", "y": 170, "label": "Snapshot(): copy the map under RLock", "variant": "emphasis", "note": "trigger: SnapshotThreshold (8192) entries since the last snapshot, SnapshotInterval, or Admin.Snapshot" },
+    { "id": "persist", "from": "fsm", "to": "store", "y": 240, "label": "Persist: stream header + KeyValue records", "variant": "emphasis" },
+    { "id": "persisted", "from": "store", "to": "leader", "y": 275, "label": "snapshot index stored", "variant": "return", "note": "compact raft.db, keep TrailingLogs (10240) entries; retain the two newest snapshots" },
+    { "id": "ae", "from": "leader", "to": "lagging", "y": 355, "label": "AppendEntries(prevIndex)", "variant": "dashed" },
+    { "id": "reject", "from": "lagging", "to": "leader", "y": 385, "label": "reject: missing entries", "variant": "return", "note": "the follower's next index is below the leader's compacted log" },
+    { "id": "install", "from": "leader", "to": "lagging", "y": 445, "label": "InstallSnapshot(stream)", "variant": "emphasis", "note": "FSM.Restore replaces the map; applied index = snapshot index from the header" },
+    { "id": "install-ok", "from": "lagging", "to": "leader", "y": 510, "label": "ack", "variant": "return" },
+    { "id": "tail", "from": "leader", "to": "lagging", "y": 545, "label": "AppendEntries(log tail)", "variant": "default" },
+    { "id": "caught-up", "from": "lagging", "to": "leader", "y": 575, "label": "ack: caught up", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "leader", "from": 165, "to": 290, "type": "backend" },
+    { "participant": "fsm", "from": 165, "to": 246, "type": "database" },
+    { "participant": "store", "from": 235, "to": 281, "type": "database" },
+    { "participant": "leader", "from": 350, "to": 581, "type": "backend" },
+    { "participant": "lagging", "from": 440, "to": 581, "type": "backend" }
+  ],
+  "cards": [
+    { "dot": "cyan", "title": "Snapshot cost", "items": ["Copying map pointers takes microseconds for config-sized data; raft resumes applying at once", "Persist streams records off the raft loop; memory stays flat; a corrupt length prefix is capped at 64 MiB"] },
+    { "dot": "emerald", "title": "Catch-up", "items": ["A slightly lagging follower replays from the retained log tail", "One behind the compaction point receives InstallSnapshot and calls FSM.Restore"] },
+    { "dot": "orange", "title": "Proof", "items": ["TestSnapshotCompactionAndCatchUp uses threshold 64 and 8 trailing entries", "It restarts the node from disk and checks snapshot + tail rebuild identical state"] }
+  ]
+}
