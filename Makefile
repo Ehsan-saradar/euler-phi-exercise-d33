@@ -26,7 +26,10 @@ test-docker:
 # The in-process harness binds 127.0.1.1-5. Linux has them already; macOS needs
 # aliases on lo0 (sudo, lost on reboot).
 mac-aliases:
-	for i in 1 2 3 4 5; do sudo ifconfig lo0 alias 127.0.1.$$i up; done
+	@for i in 1 2 3 4 5; do \
+		ifconfig lo0 | grep -q "inet 127.0.1.$$i " || sudo ifconfig lo0 alias 127.0.1.$$i up || exit 1; \
+	done
+	@echo "loopback aliases on lo0:"; ifconfig lo0 | grep 'inet 127.0.1.'
 
 lint:
 	golangci-lint run ./...
