@@ -175,13 +175,20 @@ All settings are `KV_*` environment variables (see `docker-compose.yml`).
 
 - **Claude Code (Claude Fable 5.1)**, used for planning, scaffolding, writing
   the implementation, tests, scripts and documentation under direction, and
-  for reviewing lint and test output. Every line was read and is explained in
-  the live review by the author.
-- No other AI tools.
+  for reviewing lint and test output.
+- **Claude Code (Claude Opus 5.5)**, used for a review of the finished
+  submission against the exercise and for the follow-up fixes: shortening the
+  design document, embedding the diagrams, macOS test targets and the Pages
+  build.
+- **Archify** (v3.2), an agent skill run by Claude Code to author, validate
+  and export the diagrams in [`docs/diagrams/`](docs/diagrams/).
+- No other AI tools. Every line was read and is explained in the live review
+  by the author.
 
 ## Time spent
 
-See [`docs/TIMELOG.md`](docs/TIMELOG.md) for the log.
+**Total: ~11.5 h**: about 6 h implementation and tests, 5.5 h CI, diagrams,
+documentation and review. Breakdown in [`docs/TIMELOG.md`](docs/TIMELOG.md).
 
 ## License
 

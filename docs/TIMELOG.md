@@ -1,7 +1,7 @@
 # Time log
 
-Wall-clock time on the exercise. Entries are added as work happens; the total
-at the bottom is what the README reports.
+Wall-clock time on the exercise, rounded to half hours. The total at the
+bottom is what the README reports.
 
 | Date | Duration | What |
 |------|----------|------|
@@ -11,7 +11,8 @@ at the bottom is what the README reports.
 | 2026-10-28 | 1.0 h | Porcupine model, recorder, nemesis, error contract (NOT_APPLIED), chaos runs, e2e suite, demo and chaos scripts |
 | 2026-10-28 | 0.5 h | Metrics, HTTP endpoints, load generator, benchmark |
 | 2026-10-28 | 1.5 h | README, ADRs, design document, GitHub workflows (CodeQL, release, pages), repository hygiene |
-| | | Diagrams in the requested tool |
-| | | Review of every file, live-review rehearsal (leases, watch, add node), 10x/100x notes |
+| 2026-10-29 | 0.5 h | CI fixes: pinned protoc plugins for the `gen/` check, CodeQL setup |
+| 2026-10-29 | 1.5 h | Six diagrams in Archify (architecture and five process flows), export script |
+| 2026-10-30 | 3.5 h | Review and fixes: design document cut to six pages, Archify diagrams embedded, macOS test targets, Pages links, dependency updates |
 
-**Total so far: 6 h** (update as rows are added)
+**Total: 11.5 h** (6 h implementation and tests, 5.5 h CI, diagrams, documentation and review)
