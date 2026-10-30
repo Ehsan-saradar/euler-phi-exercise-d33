@@ -47,7 +47,8 @@ protobuf schema serves the wire, the log `Command` and the snapshot records
 (fsync), replicates, and once a majority has the entry it is committed and
 applied in log order by one goroutine. The response carries the FSM result
 and the entry's index. A follower forwards writes to the leader, tagging the
-request so a leadership change mid-hop yields an error, never a second hop.
+request so a leadership change mid-hop yields an error, never a second hop
+([write flow](diagrams/flow-write.png)).
 
 **Linearizable reads (ReadIndex, [ADR 003](adr/003-linearizable-reads.md)).**
 A local read is linearizable only if the node is still leader of the current
@@ -68,24 +69,7 @@ entry per read) is kept as a reference; failover tests run in both modes.
 `CONSISTENCY_STALE` reads the local map on any node with no coordination and
 keeps working on the minority side of a partition.
 
-```mermaid
-sequenceDiagram
-    participant C as client
-    participant F as follower
-    participant L as leader
-    participant Q as majority
-    C->>F: Get(k, LINEARIZABLE)
-    F->>L: forward
-    opt first read this term
-        L->>Q: barrier entry
-        Q-->>L: committed
-    end
-    L->>Q: VerifyLeader heartbeat
-    Q-->>L: ack
-    L->>L: wait FSM.applied >= CommitIndex
-    L-->>F: value, version, index
-    F-->>C: value, version, index
-```
+<img src="diagrams/flow-read.png" alt="Linearizable and stale read paths" width="80%">
 
 **Error contract ([ADR 005](adr/005-error-contract.md)).** A client must know
 whether a failed write may have happened:
@@ -108,7 +92,7 @@ whether a failed write may have happened:
   behind the compaction point gets `InstallSnapshot` and `FSM.Restore`.
 - `TestSnapshotCompactionAndCatchUp` drives this with a threshold of 64 and 8
   trailing entries, then restarts the node to prove snapshot + log tail
-  rebuilds the same state.
+  rebuilds the same state ([snapshot flow](diagrams/flow-snapshot.png)).
 
 ## 5. Failure handling
 
@@ -120,7 +104,10 @@ whether a failed write may have happened:
 | Follower isolated, process pause, GC | same as isolation to peers; a resumed leader fails `VerifyLeader` until it learns the new term | `NOT_APPLIED` or `DeadlineExceeded`; stale reads work |
 | Two nodes down | no quorum | `NOT_APPLIED`; stale reads only |
 
-Fault injection ([ADR 004](adr/004-fault-injection.md)) is a `ChaosLayer` in
+<img src="diagrams/flow-partition.png" alt="Minority partition" width="75%">
+
+The [failover flow](diagrams/flow-failover.png) shows a leader crash step by
+step. Fault injection ([ADR 004](adr/004-fault-injection.md)) is a `ChaosLayer` in
 the raft transport: block peers (refuse dials, drop inbound, close streams)
 and freeze all raft traffic, driven by `Admin.Partition`.
 

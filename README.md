@@ -43,29 +43,7 @@ plain HTTP on the same port serves `/healthz`, `/status` and `/metrics`
 
 ## Architecture
 
-```mermaid
-flowchart LR
-    subgraph client
-        C[kvctl / gRPC client]
-    end
-    subgraph node1
-        G1[gRPC API] --> N1[raftnode] --> F1[(FSM map)]
-        N1 --> L1[(boltdb log + snapshots)]
-    end
-    subgraph node2
-        G2[gRPC API] --> N2[raftnode] --> F2[(FSM map)]
-    end
-    subgraph node3
-        G3[gRPC API] --> N3[raftnode] --> F3[(FSM map)]
-    end
-    C -->|any node| G1
-    C -.-> G2
-    C -.-> G3
-    G2 -->|forward writes and linearizable reads| G1
-    N1 <-->|AppendEntries / RequestVote / InstallSnapshot| N2
-    N1 <--> N3
-    N2 <--> N3
-```
+![System architecture](docs/diagrams/architecture.png)
 
 One process per node, **one TCP port per node** (cmux demultiplexes gRPC,
 HTTP/1 and raft traffic). Packages:
@@ -80,9 +58,9 @@ HTTP/1 and raft traffic). Packages:
 | `cmd/kvnode`, `cmd/kvctl`, `cmd/kvbench` | node binary, CLI, load generator |
 | `proto/kv/v1` | API, log command and snapshot schema (generated code committed in `gen/`) |
 
-Process flows (write, linearizable read, failover, partition, snapshot) are
-drawn in the design document; the diagrams made with the requested tool are
-in [`docs/diagrams/`](docs/diagrams/).
+All diagrams are made with Archify. The process flows (write, linearizable
+read, failover, partition, snapshot) are in [`docs/diagrams/`](docs/diagrams/);
+the design document embeds the read and partition flows and links the rest.
 
 ### Write path
 

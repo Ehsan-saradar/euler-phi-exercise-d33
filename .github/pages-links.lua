@@ -30,3 +30,8 @@ function Link(el)
   el.target = t
   return el
 end
+
+function Image(el)
+  if dir == "." then el.src = el.src:gsub("^docs/", "") end
+  return el
+end
