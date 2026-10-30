@@ -185,8 +185,9 @@ All settings are `KV_*` environment variables (see `docker-compose.yml`).
 - `Range` sorts matches on every call (O(n log n) over matching keys); fine
   for a config store, not for millions of keys.
 - One raft group: write throughput is bounded by one leader's fsync rate.
-- Leases/TTL and watch are designed (see design doc) but not implemented;
-  they are the rehearsed live-review change.
+- Leases/TTL and watch are designed (see design doc) but not implemented.
+- `CompareAndSwap` compares `version`, which restarts at 1 when a key is
+  deleted and recreated (ABA); comparing `mod_index` is the fix.
 - The in-process harness binds `127.0.1.N` loopback aliases, which works on
   Linux out of the box but needs `ifconfig lo0 alias` on macOS.
 
