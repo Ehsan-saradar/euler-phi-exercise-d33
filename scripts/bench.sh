@@ -9,7 +9,7 @@ go build -o bin/kvbench ./cmd/kvbench
 {
   echo "# Benchmark ($(date -u +%Y-%m-%dT%H:%MZ))"
   echo
-  echo "Host: $(uname -srm), $(nproc) CPUs. Cluster: 3 nodes in docker compose on one machine, boltdb log store with fsync, ${DURATION} per row, 1000-key space."
+  echo "Host: $(uname -srm), $(getconf _NPROCESSORS_ONLN) CPUs. Cluster: 3 nodes in docker compose on one machine, boltdb log store with fsync, ${DURATION} per row, 1000-key space."
   echo
   echo "| mode | clients | value | ops/s | p50 | p95 | p99 | max | errors |"
   echo "|------|---------|-------|-------|-----|-----|-----|-----|--------|"

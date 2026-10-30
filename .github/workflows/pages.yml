@@ -3,7 +3,7 @@ name: pages
 on:
   push:
     branches: [main]
-    paths: ["docs/**", ".github/workflows/pages.yml"]
+    paths: ["docs/**", "README.md", ".github/workflows/pages.yml", ".github/pages-links.lua"]
   workflow_dispatch:
 
 permissions:
@@ -27,9 +27,10 @@ jobs:
           cp -r docs/. site/
           for f in $(find docs -name '*.md'); do
             out="site/${f#docs/}"; out="${out%.md}.html"
-            pandoc "$f" --standalone --metadata title="$(basename "$f" .md)" -o "$out"
+            case "$out" in */README.html) out="${out%README.html}index.html" ;; esac
+            pandoc "$f" --standalone --lua-filter .github/pages-links.lua --metadata title="$(basename "$f" .md)" -o "$out"
           done
-          cp site/index.html site/index.html 2>/dev/null || pandoc README.md --standalone --metadata title="kvstore" -o site/index.html
+          pandoc README.md --standalone --lua-filter .github/pages-links.lua --metadata title="kvstore" -o site/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

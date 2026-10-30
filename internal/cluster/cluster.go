@@ -69,9 +69,9 @@ func New(t testing.TB, opts Options) *Cluster {
 	peers := make(map[string]string, opts.Nodes)
 	listeners := make([]net.Listener, opts.Nodes)
 	for i := range opts.Nodes {
-		ln, err := listen(fmt.Sprintf("127.0.1.%d:0", i+1))
+		ln, err := listenAlias(i)
 		if err != nil {
-			t.Fatalf("bind loopback alias (Linux only): %v", err)
+			t.Fatal(err)
 		}
 		listeners[i] = ln
 		peers[nodeID(i)] = ln.Addr().String()
@@ -93,6 +93,16 @@ func nodeID(i int) string { return fmt.Sprintf("node%d", i+1) }
 
 func listen(addr string) (net.Listener, error) {
 	return (&net.ListenConfig{}).Listen(context.Background(), "tcp", addr)
+}
+
+// listenAlias binds node i to 127.0.1.(i+1). Linux routes all of 127/8 to the
+// loopback interface; macOS only has 127.0.0.1 until aliases are added.
+func listenAlias(i int) (net.Listener, error) {
+	ln, err := listen(fmt.Sprintf("127.0.1.%d:0", i+1))
+	if err != nil {
+		return nil, fmt.Errorf("bind loopback alias: %w (on macOS run `make mac-aliases` once, or use `make test-docker`)", err)
+	}
+	return ln, nil
 }
 
 func (m *Member) config(ln net.Listener) server.Config {
@@ -290,7 +300,7 @@ func (c *Cluster) Followers(leader *Member) []*Member {
 func (c *Cluster) AddMember() *Member {
 	c.t.Helper()
 	i := len(c.Members)
-	ln, err := listen(fmt.Sprintf("127.0.1.%d:0", i+1))
+	ln, err := listenAlias(i)
 	if err != nil {
 		c.t.Fatal(err)
 	}

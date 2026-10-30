@@ -1,7 +1,7 @@
 BIN := bin
 GO ?= go
 
-.PHONY: all build test test-unit test-integration lint proto proto-check run up down logs demo chaos bench clean
+.PHONY: all build test test-unit test-integration test-docker mac-aliases lint proto proto-check run up down logs demo chaos bench clean
 
 all: lint test build
 
@@ -17,6 +17,16 @@ test-unit:
 
 test-integration:
 	$(GO) test -race -count=1 -v ./test/integration/...
+
+# Full suite in a Linux container: no local Go toolchain or loopback aliases needed.
+test-docker:
+	docker run --rm -v "$(CURDIR)":/src -w /src -v kv-gomod:/go/pkg/mod -v kv-gocache:/root/.cache/go-build \
+		golang:1.26 go test -race -count=1 ./...
+
+# The in-process harness binds 127.0.1.1-5. Linux has them already; macOS needs
+# aliases on lo0 (sudo, lost on reboot).
+mac-aliases:
+	for i in 1 2 3 4 5; do sudo ifconfig lo0 alias 127.0.1.$$i up; done
 
 lint:
 	golangci-lint run ./...

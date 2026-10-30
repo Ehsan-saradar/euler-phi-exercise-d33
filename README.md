@@ -124,6 +124,7 @@ reason `NOT_APPLIED` means "nothing happened, retry anywhere";
 
 ```bash
 make test               # unit + integration under the race detector (~30 s)
+make test-docker        # same suite in a golang container (any OS)
 make chaos              # randomized kill / partition / freeze + Porcupine (~30 s)
 docker compose up -d --wait && go test -tags e2e ./test/e2e/   # real containers
 make lint               # golangci-lint + buf lint
@@ -189,7 +190,8 @@ All settings are `KV_*` environment variables (see `docker-compose.yml`).
 - `CompareAndSwap` compares `version`, which restarts at 1 when a key is
   deleted and recreated (ABA); comparing `mod_index` is the fix.
 - The in-process harness binds `127.0.1.N` loopback aliases, which works on
-  Linux out of the box but needs `ifconfig lo0 alias` on macOS.
+  Linux out of the box; on macOS run `make mac-aliases` once (sudo) or use
+  `make test-docker`.
 
 ## AI tools used
 
