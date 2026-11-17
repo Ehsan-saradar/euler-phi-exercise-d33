@@ -18,13 +18,42 @@ import (
 	metricsprom "github.com/hashicorp/go-metrics/prometheus"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/spf13/cobra"
 
 	"github.com/Ehsan-saradar/euler-phi-exercise-d33/internal/raftnode"
 	"github.com/Ehsan-saradar/euler-phi-exercise-d33/internal/server"
 )
 
 func main() {
-	if err := run(); err != nil {
+	cmd := &cobra.Command{
+		Use:   "kvnode",
+		Short: "run one node of the replicated key-value store",
+		Long: `kvnode takes every setting from the environment, so the same image runs
+in compose, in CI and on a laptop. Variables and defaults:
+
+  KV_NODE_ID               node1
+  KV_LISTEN                0.0.0.0:7000      one port for gRPC, HTTP and raft
+  KV_ADVERTISE             KV_PEERS[KV_NODE_ID]
+  KV_PEERS                 id=host:port,...  initial voters; empty = join later
+  KV_BOOTSTRAP             true when KV_PEERS is set
+  KV_DATA_DIR              /data             raft.db and snapshots/
+  KV_LOG_LEVEL             info
+  KV_READ_MODE             read_index | barrier
+  KV_LEADER_WAIT           2s                how long a follower waits for a leader to forward to
+  KV_HEARTBEAT_TIMEOUT     500ms
+  KV_ELECTION_TIMEOUT      1s
+  KV_LEADER_LEASE_TIMEOUT  400ms
+  KV_COMMIT_TIMEOUT        20ms
+  KV_APPLY_TIMEOUT         5s
+  KV_SNAPSHOT_THRESHOLD    8192              entries since the last snapshot
+  KV_SNAPSHOT_INTERVAL     120s
+  KV_TRAILING_LOGS         10240             entries kept after compaction`,
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE:          func(*cobra.Command, []string) error { return run() },
+	}
+	if err := cmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "kvnode:", err)
 		os.Exit(1)
 	}

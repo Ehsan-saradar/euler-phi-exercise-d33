@@ -15,9 +15,9 @@ go build -o bin/kvbench ./cmd/kvbench
   echo "|------|---------|-------|-------|-----|-----|-----|-----|--------|"
   for mode in put get stale; do
     for clients in 1 16 64; do
-      ./bin/kvbench -mode "$mode" -clients "$clients" -duration "$DURATION" -md
+      ./bin/kvbench --mode "$mode" --clients "$clients" --duration "$DURATION" --md
     done
   done
-  ./bin/kvbench -mode mixed -clients 32 -duration "$DURATION" -md
-  ./bin/kvbench -mode put -clients 16 -value 4096 -duration "$DURATION" -md
+  ./bin/kvbench --mode mixed --clients 32 --duration "$DURATION" --md
+  ./bin/kvbench --mode put --clients 16 --value 4096 --duration "$DURATION" --md
 } | tee "$OUT"

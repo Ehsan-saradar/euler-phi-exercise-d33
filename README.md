@@ -26,12 +26,12 @@ Design document: [`docs/design.md`](docs/design.md). Decisions: [`docs/adr/`](do
 docker compose up --build -d --wait     # three nodes on localhost:7001..7003
 go build -o bin/kvctl ./cmd/kvctl
 
-bin/kvctl -addr localhost:7001 put greeting "hello phi"
-bin/kvctl -addr localhost:7003 get greeting            # linearizable, any node
-bin/kvctl -addr localhost:7003 get -stale greeting     # local replica, may lag
-bin/kvctl -addr localhost:7002 cas greeting 1 "hello again"
-bin/kvctl -addr localhost:7002 range greet
-bin/kvctl -addr localhost:7001 status
+bin/kvctl --addr localhost:7001 put greeting "hello phi"
+bin/kvctl --addr localhost:7003 get greeting            # linearizable, any node
+bin/kvctl --addr localhost:7003 get --stale greeting     # local replica, may lag
+bin/kvctl --addr localhost:7002 cas greeting 1 "hello again"
+bin/kvctl --addr localhost:7002 range greet
+bin/kvctl --addr localhost:7001 status
 
 ./scripts/demo.sh        # failover, partition and snapshot walkthrough
 ./scripts/chaos.sh       # docker-level kill / pause / partition loop

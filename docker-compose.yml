@@ -2,8 +2,8 @@
 # carries both raft replication and the gRPC API.
 #
 #   docker compose up --build
-#   kvctl -addr localhost:7001 put hello world
-#   kvctl -addr localhost:7003 get hello
+#   kvctl --addr localhost:7001 put hello world
+#   kvctl --addr localhost:7003 get hello
 x-node: &node
   build: .
   restart: unless-stopped
@@ -18,7 +18,7 @@ x-node: &node
     KV_TRAILING_LOGS: "10240"
     KV_READ_MODE: read_index
   healthcheck:
-    test: ["CMD", "kvctl", "-addr", "localhost:7000", "health"]
+    test: ["CMD", "kvctl", "--addr", "localhost:7000", "health"]
     interval: 5s
     timeout: 2s
     retries: 5

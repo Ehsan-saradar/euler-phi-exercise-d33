@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 ROUNDS=${ROUNDS:-6}
 NODES=(node1 node2 node3)
-ctl() { local node=$1; shift; docker compose exec -T "$node" kvctl -addr localhost:7000 "$@"; }
+ctl() { local node=$1; shift; docker compose exec -T "$node" kvctl --addr localhost:7000 "$@"; }
 leader() { for n in "${NODES[@]}"; do ctl "$n" status 2>/dev/null | sed -n 's/.*"leaderId": *"\([^"]*\)".*/\1/p' | grep . && return; done; }
 rand_node() { echo "${NODES[$((RANDOM % ${#NODES[@]}))]}"; }
 

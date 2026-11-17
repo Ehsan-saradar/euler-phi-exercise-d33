@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-ctl() { local node=$1; shift; docker compose exec -T "$node" kvctl -addr localhost:7000 "$@"; }
+ctl() { local node=$1; shift; docker compose exec -T "$node" kvctl --addr localhost:7000 "$@"; }
 leader() { ctl node1 status | sed -n 's/.*"leaderId": *"\([^"]*\)".*/\1/p'; }
 step() { printf '\n\033[1;34m== %s\033[0m\n' "$*"; }
 others() { for n in node1 node2 node3; do [ "$n" != "$1" ] && echo "$n"; done; }
